@@ -1,0 +1,47 @@
+http:
+  middlewares:
+    https-redirect:
+        redirectScheme:
+          scheme: https
+          permanent: true
+    
+    rateLimit:
+      rateLimit:
+        average: 100
+        burst: 50
+
+    securityHeaders:
+      headers:
+        frameDeny: true
+        sslRedirect: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        permissionsPolicy: "camera=(), microphone=(), geolocation=()"
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000
+
+    waf:
+      plugin:
+        coraza-http-wasm-traefik:
+          directives:
+            - "SecRuleEngine On"
+            - "SecDebugLog /dev/stdout"
+            - "SecDebugLogLevel 9"
+            - "SecRule REQUEST_URI \"@rx ^/static/\" \"id:1005,phase:1,allow,msg:'Static files bypass'\""
+            - "SecRule REQUEST_METHOD \"!@rx ^(GET|POST|PUT|DELETE|OPTIONS)$\" \"deny,status:405\""
+            # Security detections
+            - "SecRule ARGS \"@detectSQLi\" \"id:2000,phase:2,deny,status:403,msg:'SQL injection attempt'\""
+            - "SecRule ARGS \"@detectXSS\" \"id:2001,phase:2,deny,status:403,msg:'XSS attempt'\""
+            - "SecRule ARGS \"@rx (?i)(?:exec\\(|system\\(|passthru\\(|eval\\(|bash_exec\\(|shell_exec\\()\" \"id:2002,phase:2,deny,status:403,msg:'Command injection attempt'\""
+            - "SecRule ARGS \"@rx (?i)(?:\\.\\.|%2e%2e|%252e%252e)/\" \"id:2003,phase:2,deny,status:403,msg:'Directory traversal attempt'\""
+            - "SecRule ARGS \"@rx (?i)(?:etc/passwd|etc/shadow|proc/self/environ)\" \"id:2005,phase:2,deny,status:403,msg:'Sensitive file access attempt'\""
+            - "SecRule REQUEST_HEADERS:Content-Type \"@contains serialized\" \"id:2006,phase:1,deny,status:403,msg:'PHP Object Injection attempt'\""
+            - "SecRule ARGS \"@rx (?i)(?:union\\s+select|information_schema|sysdatabases|sysusers|pg_catalog)\" \"id:2007,phase:2,deny,status:403,msg:'Database enumeration attempt'\""
+            - "SecRule REQUEST_HEADERS:User-Agent \"@pm curl wget axios postman\" \"id:2008,phase:1,deny,status:403,msg:'Suspicious User-Agent'\""
+            # File restrictions
+            - "SecRule FILES_NAMES \"@rx \\.(?:php|jsp|sh|bash|py|js|exe|dll|phtml|cgi|pl|rb|asp|aspx)$\" \"id:3000,phase:2,deny,status:403,msg:'Forbidden file type'\""
+            # Size limits
+            - "SecRule REQUEST_BODY_LENGTH \"@gt 1048576\" \"id:4000,phase:1,deny,status:413,msg:'Request body too large'\""
+            - "SecRule REQUEST_HEADERS:Content-Length \"@gt 1048576\" \"id:4001,phase:1,deny,status:413,msg:'Content length too large'\""
